@@ -1,0 +1,27 @@
+# render.yaml — Render Web Service configuration
+# This file is optional; Render auto-detects Node.js projects.
+# Included for documentation of required environment variables.
+
+services:
+  - type: web
+    name: navitas-direct-middleware
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    plan: free
+    envVars:
+      # ─── Navitas Connect API credentials ───
+      - key: NAVITAS_BASE_URL
+        sync: false          # Set manually in Render dashboard
+      - key: NAVITAS_HMAC_CLIENT_ID
+        sync: false
+      - key: NAVITAS_HMAC_SECRET
+        sync: false
+      - key: NAVITAS_API_TOKEN
+        sync: false
+      # ─── Partner API keys (comma-separated) ───
+      - key: PARTNER_API_KEYS
+        sync: false
+      # ─── Node environment ───
+      - key: NODE_ENV
+        value: production
