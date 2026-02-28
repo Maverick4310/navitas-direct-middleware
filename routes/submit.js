@@ -19,8 +19,8 @@ const navitas = require('../services/navitasClient');
 
 // Navitas submission paths by channel
 const SUBMIT_PATHS = {
-    Indirect: '/v1/applications',
-    Direct:   '/v1/applications'
+    Indirect: '/v1/application/submit',
+    Direct:   '/v1/application/submit'
 };
 
 router.post('/', async (req, res) => {
@@ -52,12 +52,15 @@ router.post('/', async (req, res) => {
 
         // ─── Forward to Navitas ───
         const path = SUBMIT_PATHS[channel];
-        console.log(`Submitting ${channel} application to ${path}`);
-        console.log('Payload keys:', Object.keys(payload));
+        console.log(`═══ SUBMITTING ${channel.toUpperCase()} APPLICATION ═══`);
+        console.log('Navitas path:', path);
+        console.log('Payload:', JSON.stringify(payload, null, 2));
+        console.log('═══════════════════════════════════════════');
 
         const result = await navitas.post(path, payload);
 
         console.log(`Submission successful: HTTP ${result.status}`);
+        console.log('Navitas response:', JSON.stringify(result.data, null, 2));
 
         res.json({
             success: true,
@@ -66,8 +69,11 @@ router.post('/', async (req, res) => {
         });
 
     } catch (err) {
-        console.error('Submission error:', err.message);
-        console.error('Navitas response data:', err.data);
+        console.error('═══ SUBMISSION ERROR ═══');
+        console.error('Message:', err.message);
+        console.error('Status:', err.status);
+        console.error('Navitas response:', JSON.stringify(err.data, null, 2));
+        console.error('═══════════════════════');
 
         res.status(err.status || 500).json({
             success: false,
