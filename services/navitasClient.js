@@ -35,6 +35,7 @@ class NavitasClient {
      * Format: "HMAC {clientId}:{base64(HmacSHA256(message, secret))}"
      */
     generateHmac(message) {
+        console.log('HMAC signing message:', message.substring(0, 200) + (message.length > 200 ? '...' : ''));
         const hmac = crypto.createHmac('sha256', this.secret);
         hmac.update(message);
         const base64Hash = hmac.digest('base64');
@@ -63,10 +64,17 @@ class NavitasClient {
 
     /**
      * Makes an authenticated POST request to Navitas.
+     * 
+     * IMPORTANT: For POST requests, the HMAC message is path + JSON body.
+     * This matches the Postman pre-request script:
+     *   reqMessage = '/' + path.join('/') + (request['data'] || '')
      */
     async post(path, body) {
         const url = `${this.baseUrl}${path}`;
-        const authorization = this.generateHmac(path);
+        const bodyStr = JSON.stringify(body);
+
+        // POST signing: path + body (GET signing is just path+query)
+        const authorization = this.generateHmac(path + bodyStr);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -77,7 +85,7 @@ class NavitasClient {
                 'Accept': 'application/json',
                 'User-Agent': 'NavitasDirectMiddleware/1.0'
             },
-            body: JSON.stringify(body)
+            body: bodyStr  // Use the same string that was signed
         });
 
         return this._handleResponse(response, url);
