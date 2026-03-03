@@ -68,7 +68,7 @@ router.post('/', async (req, res) => {
             data: result.data
         });
 
-    } } catch (err) {
+    }  catch (err) {
     console.error('═══ SUBMISSION ERROR ═══');
     console.error('Message:', err.message);
     console.error('Status:', err.status);
