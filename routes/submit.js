@@ -68,20 +68,24 @@ router.post('/', async (req, res) => {
             data: result.data
         });
 
-    } catch (err) {
-        console.error('═══ SUBMISSION ERROR ═══');
-        console.error('Message:', err.message);
-        console.error('Status:', err.status);
-        console.error('Navitas response:', JSON.stringify(err.data, null, 2));
-        console.error('═══════════════════════');
+    } } catch (err) {
+    console.error('═══ SUBMISSION ERROR ═══');
+    console.error('Message:', err.message);
+    console.error('Status:', err.status);
+    console.error('Navitas response:', JSON.stringify(err.data, null, 2));
+    console.error('═══════════════════════');
 
-        res.status(err.status || 500).json({
-            success: false,
-            error: 'Submission failed',
-            message: err.message,
-            details: err.data || null
-        });
-    }
+    // Pass through Navitas error fields when available
+    const navitasData = err.data || {};
+
+    res.status(err.status || 500).json({
+        success: false,
+        error: navitasData.error || 'Submission failed',
+        message: navitasData.message || err.message,
+        explanation: navitasData.explanation || null,
+        details: navitasData.details || null
+    });
+}
 });
 
 module.exports = router;
