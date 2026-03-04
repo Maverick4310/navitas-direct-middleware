@@ -62,9 +62,23 @@ router.post('/', async (req, res) => {
         console.log(`Submission successful: HTTP ${result.status}`);
         console.log('Navitas response:', JSON.stringify(result.data, null, 2));
 
+        // Extract app number — Navitas may return it under different keys
+        const responseData = result.data || {};
+        const appNumber = responseData.app_number
+            || responseData.app_id
+            || responseData.appNumber
+            || null;
+
+        if (appNumber) {
+            console.log('App number extracted:', appNumber);
+        } else {
+            console.warn('No app number found in Navitas response. Keys:', Object.keys(responseData));
+        }
+
         res.json({
             success: true,
             status: result.status,
+            appNumber: appNumber,
             data: result.data
         });
 
