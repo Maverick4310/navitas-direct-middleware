@@ -64,14 +64,21 @@ class NavitasClient {
 
     /**
      * Makes an authenticated POST request to Navitas.
-     * 
+     *
      * IMPORTANT: For POST requests, the HMAC message is path + JSON body.
      * This matches the Postman pre-request script:
      *   reqMessage = '/' + path.join('/') + (request['data'] || '')
+     *
+     * @param {string} path        - API path (e.g. /v1/application/submit)
+     * @param {object} body        - Request payload
+     * @param {string} [apiToken]  - Partner-specific Navitas API token.
+     *                               Falls back to NAVITAS_API_TOKEN env var
+     *                               if not provided (e.g. for non-submission routes).
      */
-    async post(path, body) {
+    async post(path, body, apiToken) {
         const url = `${this.baseUrl}${path}`;
         const bodyStr = JSON.stringify(body);
+        const token = apiToken || this.apiToken;
 
         // POST signing: path + body (GET signing is just path+query)
         const authorization = this.generateHmac(path + bodyStr);
@@ -80,7 +87,7 @@ class NavitasClient {
             method: 'POST',
             headers: {
                 'Authorization': authorization,
-                'Api-Token': this.apiToken,
+                'Api-Token': token,
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
                 'User-Agent': 'NavitasDirectMiddleware/1.0'
