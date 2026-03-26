@@ -1,18 +1,21 @@
 /**
  * Submit Route
- * 
+ *
  * Receives a credit application payload from Salesforce
  * and forwards it to the Navitas Credit API with proper
  * HMAC authentication.
- * 
+ *
  * POST /api/submit
  * Body: { channel: "Indirect"|"Direct", payload: { ... } }
- * 
+ *
  * The LWC builds the payload (Indirect = LeaseWorks format,
  * Direct = CreditApplicationRequest format), and this route
  * forwards it to the appropriate Navitas endpoint.
+ *
+ * The partner's Navitas API token is forwarded via the
+ * X-Navitas-Token request header, sourced from the partner's
+ * Navitas_Direct_Config__c.API_Key__c field in Salesforce.
  */
-
 const express = require('express');
 const router = express.Router();
 const navitas = require('../services/navitasClient');
@@ -26,6 +29,7 @@ const SUBMIT_PATHS = {
 router.post('/', async (req, res) => {
     try {
         const { channel, payload } = req.body;
+        const navitasToken = req.headers['x-navitas-token'];
 
         // ─── Validate ───
         if (!channel || !['Indirect', 'Direct'].includes(channel)) {
@@ -42,6 +46,13 @@ router.post('/', async (req, res) => {
             });
         }
 
+        if (!navitasToken) {
+            return res.status(400).json({
+                error: 'Missing Navitas token',
+                message: 'X-Navitas-Token header is required'
+            });
+        }
+
         // ─── Check config ───
         if (!navitas.isConfigured()) {
             return res.status(503).json({
@@ -52,12 +63,12 @@ router.post('/', async (req, res) => {
 
         // ─── Forward to Navitas ───
         const path = SUBMIT_PATHS[channel];
-        console.log(`═══ SUBMITTING ${channel.toUpperCase()} APPLICATION ═══`);
+        console.log(`\u2550\u2550\u2550 SUBMITTING ${channel.toUpperCase()} APPLICATION \u2550\u2550\u2550`);
         console.log('Navitas path:', path);
         console.log('Payload:', JSON.stringify(payload, null, 2));
-        console.log('═══════════════════════════════════════════');
+        console.log('\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550');
 
-        const result = await navitas.post(path, payload);
+        const result = await navitas.post(path, payload, navitasToken);
 
         console.log(`Submission successful: HTTP ${result.status}`);
         console.log('Navitas response:', JSON.stringify(result.data, null, 2));
@@ -82,24 +93,23 @@ router.post('/', async (req, res) => {
             data: result.data
         });
 
-    }  catch (err) {
-    console.error('═══ SUBMISSION ERROR ═══');
-    console.error('Message:', err.message);
-    console.error('Status:', err.status);
-    console.error('Navitas response:', JSON.stringify(err.data, null, 2));
-    console.error('═══════════════════════');
+    } catch (err) {
+        console.error('\u2550\u2550\u2550 SUBMISSION ERROR \u2550\u2550\u2550');
+        console.error('Message:', err.message);
+        console.error('Status:', err.status);
+        console.error('Navitas response:', JSON.stringify(err.data, null, 2));
+        console.error('\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550');
 
-    // Pass through Navitas error fields when available
-    const navitasData = err.data || {};
-
-    res.status(err.status || 500).json({
-        success: false,
-        error: navitasData.error || 'Submission failed',
-        message: navitasData.message || err.message,
-        explanation: navitasData.explanation || null,
-        details: navitasData.details || null
-    });
-}
+        // Pass through Navitas error fields when available
+        const navitasData = err.data || {};
+        res.status(err.status || 500).json({
+            success: false,
+            error: navitasData.error || 'Submission failed',
+            message: navitasData.message || err.message,
+            explanation: navitasData.explanation || null,
+            details: navitasData.details || null
+        });
+    }
 });
 
 module.exports = router;
