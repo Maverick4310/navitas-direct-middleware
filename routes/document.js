@@ -62,7 +62,7 @@ router.get('/', async (req, res) => {
         // ─── Forward request to home org ──────────────────────────────
         // X-Api-Key is forwarded as-is — home org validates it against
         // API_Rest_Credential__mdt.Client_Secret__c for per-partner auth.
-        const url = `${homeOrgUrl}${SF_DOCUMENT_PATH}?appId=${encodeURIComponent(appId.trim())}`;
+        const url = `${homeOrgUrl}?appId=${encodeURIComponent(appId.trim())}`;
 
         console.log('═══ NAVITAS DOCUMENT REQUEST ═══');
         console.log('App ID:', appId);
