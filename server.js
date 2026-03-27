@@ -34,7 +34,7 @@ app.use('/health', healthRouter);
 // ─── Protected Routes (require partner API key) ───
 app.use('/api/localities', authMiddleware, localitiesRouter);
 app.use('/api/submit', authMiddleware, submitRouter);
-app.use('/api/document', authMiddleware, documentRouter);
+app.use('/api/document', documentRouter);
 
 // ─── 404 Handler ───
 app.use((req, res) => {
