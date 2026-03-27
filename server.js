@@ -16,6 +16,7 @@ const morgan = require('morgan');
 const authMiddleware = require('./middleware/auth');
 const localitiesRouter = require('./routes/localities');
 const submitRouter = require('./routes/submit');
+const documentRouter = require('./routes/document');
 const healthRouter = require('./routes/health');
 
 const app = express();
@@ -33,6 +34,7 @@ app.use('/health', healthRouter);
 // ─── Protected Routes (require partner API key) ───
 app.use('/api/localities', authMiddleware, localitiesRouter);
 app.use('/api/submit', authMiddleware, submitRouter);
+app.use('/api/document', authMiddleware, documentRouter);
 
 // ─── 404 Handler ───
 app.use((req, res) => {
