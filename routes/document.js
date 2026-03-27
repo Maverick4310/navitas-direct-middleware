@@ -67,6 +67,8 @@ router.get('/', async (req, res) => {
         console.log('═══ NAVITAS DOCUMENT REQUEST ═══');
         console.log('App ID:', appId);
         console.log('Home org URL:', url);
+        console.log('X-Api-Key received from partner:', req.headers['x-api-key'] ? req.headers['x-api-key'].substring(0, 8) + '...' : 'MISSING');
+        console.log('Full X-Api-Key being forwarded:', req.headers['x-api-key'] || 'MISSING');
         console.log('════════════════════════════════');
 
         const sfResponse = await fetch(url, {
