@@ -22,6 +22,11 @@ services:
       # ─── Partner API keys (comma-separated) ───
       - key: PARTNER_API_KEYS
         sync: false
+      # ─── Home org REST endpoints ───
+      - key: SF_HOME_ORG_URL
+        sync: false          # Full path to NavitasDocumentResource
+      - key: SF_HOME_ORG_UPLOAD_URL
+        sync: false          # Full path to NavitasDocumentUploadResource
       # ─── Node environment ───
       - key: NODE_ENV
         value: production
