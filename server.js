@@ -17,6 +17,7 @@ const authMiddleware = require('./middleware/auth');
 const localitiesRouter = require('./routes/localities');
 const submitRouter = require('./routes/submit');
 const documentRouter = require('./routes/document');
+const prefillRouter = require('./routes/prefill');
 const healthRouter = require('./routes/health');
 
 const app = express();
@@ -35,6 +36,7 @@ app.use('/health', healthRouter);
 app.use('/api/localities', authMiddleware, localitiesRouter);
 app.use('/api/submit', authMiddleware, submitRouter);
 app.use('/api/document', documentRouter);
+app.use('/api/prefill', authMiddleware, prefillRouter);
 
 // ─── 404 Handler ───
 app.use((req, res) => {
