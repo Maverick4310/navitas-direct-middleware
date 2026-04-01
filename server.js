@@ -36,7 +36,7 @@ app.use('/health', healthRouter);
 app.use('/api/localities', authMiddleware, localitiesRouter);
 app.use('/api/submit', authMiddleware, submitRouter);
 app.use('/api/document', documentRouter);
-app.use('/api/prefill', authMiddleware, prefillRouter);
+app.use('/api/prefill', prefillRouter);
 
 // ─── 404 Handler ───
 app.use((req, res) => {
