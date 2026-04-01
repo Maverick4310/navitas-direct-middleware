@@ -2,26 +2,22 @@
  * Prefill Route
  *
  * Proxies application prefill requests from partner Salesforce orgs
- * to the Navitas home org REST endpoint, which calls LW LoadApp
- * and returns a mapped prefill payload.
- *
- * This route exists because Salesforce Sites guest user context cannot
- * make outbound HTTP callouts — the same constraint that drove document
- * fetch and upload through Render. The home org endpoint is deployed as
- * a standard authenticated REST resource (not under a Site), so Render
- * can reach it directly.
+ * to the Navitas home org Sites REST endpoint. Auth is handled entirely
+ * by the home org via clientId query param — Render is a transparent proxy.
  *
  * GET /api/prefill?lwAppId={lw_app_id}
  *
  * Auth:
- *   Inbound  — X-Api-Key validated by authMiddleware against PARTNER_API_KEYS.
- *   Outbound — X-Api-Key forwarded as-is to the home org, which validates it
- *              against API_Rest_Credential__mdt (same as document route).
+ *   Inbound  — none (no authMiddleware — home org handles auth)
+ *   Outbound — clientId appended as query param from SF_PREFILL_CLIENT_ID
+ *              env var. Home org validates against API_Rest_Credential__mdt.
  *
  * Required env vars:
- *   SF_HOME_ORG_PREFILL_URL — Full URL to NavitasApplicationPrefillResource, e.g.:
- *                             https://navitascredit.my.salesforce.com/services/apexrest/navitas/seller-app-prefill
+ *   SF_HOME_ORG_PREFILL_URL — Sites URL to NavitasApplicationPrefillResource, e.g.:
+ *                             https://navitascredit.my.salesforce-sites.com/onboarding/services/apexrest/navitas/seller-app-prefill
  *                             (no trailing slash, no query params)
+ *   SF_PREFILL_CLIENT_ID    — Client_Id__c value from API_Rest_Credential__mdt
+ *                             Partner Dashboard record (e.g. 28548)
  *
  * Success Response (HTTP 200) — mirrors NavitasApplicationPrefillResource:
  *   {
@@ -36,13 +32,6 @@
  *       "corpGuarantors": [ { name, street, city, state, zip, phone, email } ]
  *     }
  *   }
- *
- * Error Responses:
- *   400  { success: false, error: "lwAppId query parameter is required." }
- *   401  { success: false, error: "..." }   — forwarded from home org
- *   404  { success: false, error: "..." }   — forwarded from home org
- *   500  { success: false, error: "..." }
- *   502  { success: false, error: "..." }   — forwarded from home org
  */
 
 const express = require('express');
@@ -65,8 +54,9 @@ router.get('/', async (req, res) => {
             });
         }
 
-        // ── 2. Resolve home org URL ───────────────────────────────────
+        // ── 2. Resolve home org URL and clientId ──────────────────────
         const homeOrgUrl = (process.env.SF_HOME_ORG_PREFILL_URL || '').replace(/\/+$/, '');
+        const clientId   = process.env.SF_PREFILL_CLIENT_ID || '';
 
         if (!homeOrgUrl) {
             console.error('SF_HOME_ORG_PREFILL_URL env var is not configured');
@@ -76,23 +66,28 @@ router.get('/', async (req, res) => {
             });
         }
 
+        if (!clientId) {
+            console.error('SF_PREFILL_CLIENT_ID env var is not configured');
+            return res.status(500).json({
+                success: false,
+                error: 'Prefill service is not configured on the server.'
+            });
+        }
+
         // ── 3. Forward to home org ────────────────────────────────────
-        // X-Api-Key forwarded as-is — home org validates against
-        // API_Rest_Credential__mdt.Client_Id__c, same as document route.
-        const url = `${homeOrgUrl}?lwAppId=${encodeURIComponent(lwAppId.trim())}`;
+        // clientId authenticates with NavitasApplicationPrefillResource
+        // via API_Rest_Credential__mdt — Sites strips headers so auth
+        // must go via query param, same pattern as seller-deals.
+        const url = `${homeOrgUrl}?clientId=${encodeURIComponent(clientId)}&lwAppId=${encodeURIComponent(lwAppId.trim())}`;
 
         console.log('═══ NAVITAS PREFILL REQUEST ═══');
-        console.log('App ID:',    lwAppId.trim());
+        console.log('App ID:   ', lwAppId.trim());
         console.log('Home org:', url);
-        console.log('X-Api-Key:', req.headers['x-api-key']
-            ? req.headers['x-api-key'].substring(0, 8) + '...'
-            : 'MISSING');
         console.log('═══════════════════════════════');
 
         const sfResponse = await fetch(url, {
             method: 'GET',
             headers: {
-                'X-Api-Key':  req.headers['x-api-key'],
                 'Accept':     'application/json',
                 'User-Agent': 'NavitasDirectMiddleware/1.0'
             }
@@ -117,7 +112,6 @@ router.get('/', async (req, res) => {
             console.warn('Home org prefill error:', JSON.stringify(body));
         }
 
-        // Mirror the home org status code and body back to the partner org
         return res.status(sfResponse.status).json(body);
 
     } catch (err) {
