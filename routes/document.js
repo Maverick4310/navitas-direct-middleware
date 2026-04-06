@@ -1,185 +1,223 @@
 /**
- * Navitas API Client
- * 
- * Handles HMAC-SHA256 authentication and HTTP communication
- * with the Navitas Connect API. All Navitas credentials are
- * stored as Render environment variables.
- * 
+ * Document Route
+ *
+ * Handles document fetch and upload requests from partner org
+ * Salesforce callouts and forwards them to the appropriate
+ * Navitas endpoint.
+ *
+ * GET  /api/document?appId={lw_app_id}   — fetch Dealer Call Letter
+ *      Proxies to the Navitas home org regular REST API.
+ *      (Home org required here because the Sites guest-user context
+ *      cannot make outbound callouts to Leaseworks.)
+ *
+ * POST /api/document/upload              — attach a document to a deal
+ *      Calls the Navitas Connect attachment API directly:
+ *      POST {NAVITAS_ATTACH_BASE_URL}/v1/application/attachment?app_id={lwAppId}
+ *      Body: { file_name, data }
+ *      Auth: HMAC Authorization + Api-Token (per-partner, from X-Navitas-Token).
+ *
+ * Inbound auth (both routes):
+ *   X-Api-Key header — validated by authMiddleware against PARTNER_API_KEYS.
+ *
  * Required env vars:
- *   NAVITAS_BASE_URL         — e.g. https://connect-demo2.navitascredit.com
- *   NAVITAS_ATTACH_BASE_URL  — same host: https://connect-demo2.navitascredit.com
- *   NAVITAS_HMAC_CLIENT_ID
- *   NAVITAS_HMAC_SECRET
- *   NAVITAS_API_TOKEN
+ *   SF_HOME_ORG_URL         — Full URL to NavitasDocumentResource (GET route only)
+ *   NAVITAS_ATTACH_BASE_URL — Base URL for the Navitas attachment API,
+ *                             e.g. https://partner.navitascredit.com
+ *   NAVITAS_HMAC_CLIENT_ID  — HMAC signing client ID
+ *   NAVITAS_HMAC_SECRET     — HMAC signing secret
+ *
+ * GET response mirrors NavitasDocumentResource exactly:
+ *   200  { success: true,  fileName, mimeType, bytes }
+ *   400  { success: false, error: "..." }
+ *   401  { success: false, error: "..." }
+ *   404  { success: false, error: "..." }
+ *   502  { success: false, error: "..." }
+ *
+ * POST response:
+ *   200  { success: true }
+ *   400  { success: false, error: "..." }
+ *   401  { success: false, error: "..." }
+ *   500  { success: false, error: "..." }
  */
 
-const crypto = require('crypto');
+const express = require('express');
+const router  = express.Router();
+const navitas = require('../services/navitasClient');
 
-class NavitasClient {
+// ─────────────────────────────────────────────────────────────────────
+//  GET /api/document?appId={lw_app_id}
+//  Fetch Dealer Call Letter for an approved application.
+// ─────────────────────────────────────────────────────────────────────
 
-    constructor() {
-        this.baseUrl       = (process.env.NAVITAS_BASE_URL        || '').replace(/\/+$/, '');
-        this.attachBaseUrl = (process.env.NAVITAS_ATTACH_BASE_URL || '').replace(/\/+$/, '');
-        this.clientId      = process.env.NAVITAS_HMAC_CLIENT_ID || '';
-        this.secret        = process.env.NAVITAS_HMAC_SECRET     || '';
-        this.apiToken      = process.env.NAVITAS_API_TOKEN        || '';
-    }
+router.get('/', async (req, res) => {
+    try {
 
-    /**
-     * Validates that all required env vars are set for application submission.
-     */
-    isConfigured() {
-        return this.baseUrl && this.clientId && this.secret && this.apiToken;
-    }
+        // ─── Validate appId ───────────────────────────────────────────
+        const { appId } = req.query;
 
-    /**
-     * Validates that all required env vars are set for document attachment.
-     */
-    isAttachConfigured() {
-        return this.attachBaseUrl && this.clientId && this.secret;
-    }
+        if (!appId || !appId.trim()) {
+            return res.status(400).json({
+                success: false,
+                error: 'appId query parameter is required.'
+            });
+        }
 
-    /**
-     * Generates HMAC-SHA256 Authorization header.
-     * Format: "HMAC {clientId}:{base64(HmacSHA256(message, secret))}"
-     */
-    generateHmac(message) {
-        console.log('HMAC signing message:', message.substring(0, 200) + (message.length > 200 ? '...' : ''));
-        const hmac = crypto.createHmac('sha256', this.secret);
-        hmac.update(message);
-        const base64Hash = hmac.digest('base64');
-        return `HMAC ${this.clientId}:${base64Hash}`;
-    }
+        // ─── Resolve home org URL ─────────────────────────────────────
+        const homeOrgUrl = (process.env.SF_HOME_ORG_URL || '').replace(/\/+$/, '');
 
-    /**
-     * Makes an authenticated GET request to Navitas.
-     */
-    async get(path) {
-        const url = `${this.baseUrl}${path}`;
-        const authorization = this.generateHmac(path);
+        if (!homeOrgUrl) {
+            console.error('SF_HOME_ORG_URL env var is not configured');
+            return res.status(500).json({
+                success: false,
+                error: 'Document service is not configured on the server.'
+            });
+        }
 
-        const response = await fetch(url, {
+        // ─── Forward request to home org ──────────────────────────────
+        // X-Api-Key is forwarded as-is — home org validates it against
+        // API_Rest_Credential__mdt.Client_Secret__c for per-partner auth.
+        const url = `${homeOrgUrl}?appId=${encodeURIComponent(appId.trim())}`;
+
+        console.log('═══ NAVITAS DOCUMENT REQUEST ═══');
+        console.log('App ID:', appId);
+        console.log('Home org URL:', url);
+        console.log('X-Api-Key received from partner:', req.headers['x-api-key'] ? req.headers['x-api-key'].substring(0, 8) + '...' : 'MISSING');
+        console.log('Full X-Api-Key being forwarded:', req.headers['x-api-key'] || 'MISSING');
+        console.log('════════════════════════════════');
+
+        const sfResponse = await fetch(url, {
             method: 'GET',
             headers: {
-                'Authorization': authorization,
-                'Api-Token': this.apiToken,
-                'Accept': 'application/json',
+                'X-Api-Key':  req.headers['x-api-key'],
+                'Accept':     'application/json',
                 'User-Agent': 'NavitasDirectMiddleware/1.0'
             }
         });
 
-        return this._handleResponse(response, url);
-    }
-
-    /**
-     * Makes an authenticated POST request to Navitas.
-     *
-     * IMPORTANT: For POST requests, the HMAC message is path + JSON body.
-     * This matches the Postman pre-request script:
-     *   reqMessage = '/' + path.join('/') + (request['data'] || '')
-     *
-     * @param {string} path        - API path (e.g. /v1/application/submit)
-     * @param {object} body        - Request payload
-     * @param {string} [apiToken]  - Partner-specific Navitas API token.
-     *                               Falls back to NAVITAS_API_TOKEN env var
-     *                               if not provided (e.g. for non-submission routes).
-     */
-    async post(path, body, apiToken) {
-        const url = `${this.baseUrl}${path}`;
-        const bodyStr = JSON.stringify(body);
-        const token = apiToken || this.apiToken;
-
-        // POST signing: path + body (GET signing is just path+query)
-        const authorization = this.generateHmac(path + bodyStr);
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': authorization,
-                'Api-Token': token,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'User-Agent': 'NavitasDirectMiddleware/1.0'
-            },
-            body: bodyStr  // Use the same string that was signed
-        });
-
-        return this._handleResponse(response, url);
-    }
-
-    /**
-     * Makes an authenticated POST to the attachment endpoint.
-     *
-     * Uses NAVITAS_ATTACH_BASE_URL instead of NAVITAS_BASE_URL.
-     * Signing follows the Postman pre-request script convention for POST:
-     *   reqMessage = '/' + path.join('/') + (request['data'] || '')
-     * The query string (app_id param) is NOT included in the signed message —
-     * only the path segments + body. The full URL (with query string) is still
-     * used for the actual fetch.
-     *
-     * @param {string} path       - Path + query string, e.g.:
-     *                              /v1/application/attachment?app_id=12345
-     * @param {object} body       - { file_name, data }
-     * @param {string} apiToken   - Partner-specific Navitas API token
-     *                              (X-Navitas-Token from the partner org).
-     */
-    async postAttachment(path, body, apiToken) {
-        const url     = `${this.attachBaseUrl}${path}`;
-        const bodyStr = JSON.stringify(body);
-        const token   = apiToken || this.apiToken;
-
-        // Strip query string before signing — Postman signs path segments only,
-        // not the query string. Full URL (with ?app_id) is still used for fetch.
-        const pathOnly      = path.split('?')[0];
-        const authorization = this.generateHmac(pathOnly + bodyStr);
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': authorization,
-                'Api-Token':     token,
-                'Content-Type':  'application/json',
-                'Accept':        'application/json',
-                'User-Agent':    'NavitasDirectMiddleware/1.0'
-            },
-            body: bodyStr
-        });
-
-        return this._handleResponse(response, url);
-    }
-
-    /**
-     * Processes the Navitas API response.
-     * Returns { ok, status, data } or throws with details.
-     */
-    async _handleResponse(response, url) {
-        const contentType = response.headers.get('content-type') || '';
-        let data;
+        const contentType = sfResponse.headers.get('content-type') || '';
+        let body;
 
         if (contentType.includes('application/json')) {
-            data = await response.json();
+            body = await sfResponse.json();
         } else {
-            data = await response.text();
+            const text = await sfResponse.text();
+            body = { success: false, error: `Unexpected response from home org: ${text.substring(0, 200)}` };
         }
 
-        if (!response.ok) {
-            const error = new Error(`Navitas API error: HTTP ${response.status}`);
-            error.status = response.status;
-            error.url = url;
-            error.data = data;
+        console.log(`Home org response: HTTP ${sfResponse.status}`);
 
-            // Check for Cloudflare block (shouldn't happen from Render, but just in case)
-            if (typeof data === 'string' && data.includes('Cloudflare')) {
-                error.message = 'Navitas API is blocking this server IP (Cloudflare). Contact Navitas support.';
-                error.isCloudflare = true;
-            }
-
-            throw error;
+        if (!sfResponse.ok) {
+            console.warn('Home org error:', JSON.stringify(body));
         }
 
-        return { ok: true, status: response.status, data };
+        // Mirror the home org status code and body back to the partner org
+        return res.status(sfResponse.status).json(body);
+
+    } catch (err) {
+        console.error('═══ DOCUMENT ROUTE ERROR ═══');
+        console.error('Message:', err.message);
+        console.error('════════════════════════════');
+
+        return res.status(500).json({
+            success: false,
+            error: 'Document service encountered an unexpected error: ' + err.message
+        });
     }
-}
+});
 
-// Export singleton instance
-module.exports = new NavitasClient();
+// ─────────────────────────────────────────────────────────────────────
+//  POST /api/document/upload
+//  Accept a file from the partner org and POST it directly to the
+//  Navitas Connect attachment API.
+//
+//  Expected JSON body (sent by AppDocumentUploadCalloutService):
+//    { lwAppId: string, fileName: string, bytes: string (base64) }
+//
+//  X-Navitas-Token header carries the per-partner Navitas API token
+//  (API_Key__c from partner org config) — forwarded as Api-Token to
+//  the Navitas attachment API.
+// ─────────────────────────────────────────────────────────────────────
+
+router.post('/upload', async (req, res) => {
+    try {
+
+        // ─── Validate body ────────────────────────────────────────────
+        const { lwAppId, fileName, bytes } = req.body || {};
+        const navitasToken = req.headers['x-navitas-token'];
+
+        if (!lwAppId || !lwAppId.trim()) {
+            return res.status(400).json({
+                success: false,
+                error: 'lwAppId is required.'
+            });
+        }
+
+        if (!fileName || !fileName.trim()) {
+            return res.status(400).json({
+                success: false,
+                error: 'fileName is required.'
+            });
+        }
+
+        if (!bytes || !bytes.trim()) {
+            return res.status(400).json({
+                success: false,
+                error: 'bytes (base64 file content) is required.'
+            });
+        }
+
+        if (!navitasToken) {
+            return res.status(400).json({
+                success: false,
+                error: 'X-Navitas-Token header is required.'
+            });
+        }
+
+        // ─── Check client config ──────────────────────────────────────
+        if (!navitas.isAttachConfigured()) {
+            console.error('NAVITAS_ATTACH_BASE_URL or HMAC credentials are not configured');
+            return res.status(503).json({
+                success: false,
+                error: 'Attachment service is not configured on the server.'
+            });
+        }
+
+        // ─── Build path and body for Navitas attachment API ───────────
+        // app_id goes in the query string; body carries file_name + data.
+        const path        = `/v1/application/attachment?app_id=${encodeURIComponent(lwAppId.trim())}`;
+        const attachBody  = {
+            file_name: fileName.trim(),
+            data:      bytes.trim()
+        };
+
+        console.log('═══ NAVITAS ATTACHMENT REQUEST ═══');
+        console.log('App ID   :', lwAppId);
+        console.log('File     :', fileName);
+        console.log('Bytes len:', bytes.length);
+        console.log('Path     :', path);
+        console.log('Api-Token:', navitasToken.substring(0, 8) + '...');
+        console.log('══════════════════════════════════');
+
+        // ─── Forward to Navitas Connect attachment API ────────────────
+        const result = await navitas.postAttachment(path, attachBody, navitasToken);
+
+        console.log(`Navitas attachment response: HTTP ${result.status}`);
+
+        return res.json({ success: true });
+
+    } catch (err) {
+        console.error('═══ ATTACHMENT UPLOAD ERROR ═══');
+        console.error('Message:', err.message);
+        console.error('Status :', err.status);
+        console.error('Data   :', JSON.stringify(err.data));
+        console.error('═══════════════════════════════');
+
+        const navitasData = err.data || {};
+        return res.status(err.status || 500).json({
+            success: false,
+            error:   navitasData.error   || navitasData.message || err.message
+        });
+    }
+});
+
+module.exports = router;
