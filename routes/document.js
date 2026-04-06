@@ -209,6 +209,8 @@ router.post('/upload', async (req, res) => {
         console.error('═══ ATTACHMENT UPLOAD ERROR ═══');
         console.error('Message:', err.message);
         console.error('Status :', err.status);
+          console.error('Cause  :', err.cause?.message || err.cause);  // ← add this
+    console.error('Code   :', err.cause?.code);      
         console.error('Data   :', JSON.stringify(err.data));
         console.error('═══════════════════════════════');
 
