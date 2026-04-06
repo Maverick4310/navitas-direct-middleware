@@ -6,7 +6,8 @@
  * stored as Render environment variables.
  * 
  * Required env vars:
- *   NAVITAS_BASE_URL      — e.g. https://connect-demo2.navitascredit.com
+ *   NAVITAS_BASE_URL         — e.g. https://connect-demo2.navitascredit.com
+ *   NAVITAS_ATTACH_BASE_URL  — e.g. https://partner.navitascredit.com
  *   NAVITAS_HMAC_CLIENT_ID
  *   NAVITAS_HMAC_SECRET
  *   NAVITAS_API_TOKEN
@@ -17,17 +18,25 @@ const crypto = require('crypto');
 class NavitasClient {
 
     constructor() {
-        this.baseUrl    = (process.env.NAVITAS_BASE_URL || '').replace(/\/+$/, '');
-        this.clientId   = process.env.NAVITAS_HMAC_CLIENT_ID || '';
-        this.secret     = process.env.NAVITAS_HMAC_SECRET || '';
-        this.apiToken   = process.env.NAVITAS_API_TOKEN || '';
+        this.baseUrl       = (process.env.NAVITAS_BASE_URL        || '').replace(/\/+$/, '');
+        this.attachBaseUrl = (process.env.NAVITAS_ATTACH_BASE_URL || '').replace(/\/+$/, '');
+        this.clientId      = process.env.NAVITAS_HMAC_CLIENT_ID || '';
+        this.secret        = process.env.NAVITAS_HMAC_SECRET     || '';
+        this.apiToken      = process.env.NAVITAS_API_TOKEN        || '';
     }
 
     /**
-     * Validates that all required env vars are set.
+     * Validates that all required env vars are set for application submission.
      */
     isConfigured() {
         return this.baseUrl && this.clientId && this.secret && this.apiToken;
+    }
+
+    /**
+     * Validates that all required env vars are set for document attachment.
+     */
+    isAttachConfigured() {
+        return this.attachBaseUrl && this.clientId && this.secret;
     }
 
     /**
@@ -93,6 +102,42 @@ class NavitasClient {
                 'User-Agent': 'NavitasDirectMiddleware/1.0'
             },
             body: bodyStr  // Use the same string that was signed
+        });
+
+        return this._handleResponse(response, url);
+    }
+
+    /**
+     * Makes an authenticated POST to the partner attachment endpoint.
+     *
+     * Uses NAVITAS_ATTACH_BASE_URL instead of NAVITAS_BASE_URL.
+     * Signing follows the same POST convention: path (including query
+     * string) + JSON body string.
+     *
+     * @param {string} path       - Path + query string, e.g.:
+     *                              /v1/application/attachment?app_id=12345
+     * @param {object} body       - { file_name, data }
+     * @param {string} apiToken   - Partner-specific Navitas API token
+     *                              (X-Navitas-Token from the partner org).
+     */
+    async postAttachment(path, body, apiToken) {
+        const url     = `${this.attachBaseUrl}${path}`;
+        const bodyStr = JSON.stringify(body);
+        const token   = apiToken || this.apiToken;
+
+        // Sign: path (with query string) + body — mirrors POST convention
+        const authorization = this.generateHmac(path + bodyStr);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': authorization,
+                'Api-Token':     token,
+                'Content-Type':  'application/json',
+                'Accept':        'application/json',
+                'User-Agent':    'NavitasDirectMiddleware/1.0'
+            },
+            body: bodyStr
         });
 
         return this._handleResponse(response, url);
