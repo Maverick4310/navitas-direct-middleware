@@ -7,7 +7,7 @@
  * 
  * Required env vars:
  *   NAVITAS_BASE_URL         — e.g. https://connect-demo2.navitascredit.com
- *   NAVITAS_ATTACH_BASE_URL  — e.g. https://partner.navitascredit.com
+ *   NAVITAS_ATTACH_BASE_URL  — same host: https://connect-demo2.navitascredit.com
  *   NAVITAS_HMAC_CLIENT_ID
  *   NAVITAS_HMAC_SECRET
  *   NAVITAS_API_TOKEN
@@ -108,11 +108,14 @@ class NavitasClient {
     }
 
     /**
-     * Makes an authenticated POST to the partner attachment endpoint.
+     * Makes an authenticated POST to the attachment endpoint.
      *
      * Uses NAVITAS_ATTACH_BASE_URL instead of NAVITAS_BASE_URL.
-     * Signing follows the same POST convention: path (including query
-     * string) + JSON body string.
+     * Signing follows the Postman pre-request script convention for POST:
+     *   reqMessage = '/' + path.join('/') + (request['data'] || '')
+     * The query string (app_id param) is NOT included in the signed message —
+     * only the path segments + body. The full URL (with query string) is still
+     * used for the actual fetch.
      *
      * @param {string} path       - Path + query string, e.g.:
      *                              /v1/application/attachment?app_id=12345
@@ -125,8 +128,10 @@ class NavitasClient {
         const bodyStr = JSON.stringify(body);
         const token   = apiToken || this.apiToken;
 
-        // Sign: path (with query string) + body — mirrors POST convention
-        const authorization = this.generateHmac(path + bodyStr);
+        // Strip query string before signing — Postman signs path segments only,
+        // not the query string. Full URL (with ?app_id) is still used for fetch.
+        const pathOnly      = path.split('?')[0];
+        const authorization = this.generateHmac(pathOnly + bodyStr);
 
         const response = await fetch(url, {
             method: 'POST',
