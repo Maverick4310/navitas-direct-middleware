@@ -13,6 +13,8 @@ services:
       # ─── Navitas Connect API credentials ───
       - key: NAVITAS_BASE_URL
         sync: false          # Set manually in Render dashboard
+      - key: NAVITAS_ATTACH_BASE_URL
+        sync: false          # https://partner.navitascredit.com
       - key: NAVITAS_HMAC_CLIENT_ID
         sync: false
       - key: NAVITAS_HMAC_SECRET
@@ -24,9 +26,7 @@ services:
         sync: false
       # ─── Home org REST endpoints ───
       - key: SF_HOME_ORG_URL
-        sync: false          # Full path to NavitasDocumentResource
-      - key: SF_HOME_ORG_UPLOAD_URL
-        sync: false          # Full path to NavitasDocumentUploadResource
+        sync: false          # Full path to NavitasDocumentResource (GET call letter only)
       # ─── Node environment ───
       - key: NODE_ENV
         value: production
