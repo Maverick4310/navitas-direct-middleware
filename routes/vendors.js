@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
     try {
 
         // ─── Check config ──────────────────────────────────────────────
-        if (!navitas.isConfigured()) {
+if (!navitas.isAttachConfigured()) {
             return res.status(503).json({
                 error: 'Service not configured',
                 message: 'Navitas API credentials are not set on the server'
@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
         }
 
         // ─── Call Navitas ──────────────────────────────────────────────
-        const result = await navitas.get('/v1/asset_vendors');
+        const result = await navitas.getAttach('/v1/asset_vendors');
         const vendors = Array.isArray(result.data) ? result.data : [];
 
         res.json(vendors);
