@@ -7,7 +7,7 @@
  * 
  * Required env vars:
  *   NAVITAS_BASE_URL         — e.g. https://connect-demo2.navitascredit.com
- *   NAVITAS_ATTACH_BASE_URL  — same host: https://connect-demo2.navitascredit.com
+ *   NAVITAS_ATTACH_BASE_URL  — e.g. https://partnerportal.navitascredit.com
  *   NAVITAS_HMAC_CLIENT_ID
  *   NAVITAS_HMAC_SECRET
  *   NAVITAS_API_TOKEN
@@ -108,6 +108,32 @@ class NavitasClient {
     }
 
     /**
+     * Makes an authenticated GET request to the attachment base URL
+     * (NAVITAS_ATTACH_BASE_URL — e.g. https://partnerportal.navitascredit.com).
+     *
+     * @param {string} path       - API path (e.g. /v1/asset_vendors)
+     * @param {string} [apiToken] - Partner-specific Navitas API token.
+     *                              Falls back to NAVITAS_API_TOKEN env var if not provided.
+     */
+    async getAttach(path, apiToken) {
+        const url           = `${this.attachBaseUrl}${path}`;
+        const authorization = this.generateHmac(path);
+        const token         = apiToken || this.apiToken;
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': authorization,
+                'Api-Token':     token,
+                'Accept':        'application/json',
+                'User-Agent':    'NavitasDirectMiddleware/1.0'
+            }
+        });
+
+        return this._handleResponse(response, url);
+    }
+
+    /**
      * Makes an authenticated POST to the attachment endpoint.
      *
      * Uses NAVITAS_ATTACH_BASE_URL instead of NAVITAS_BASE_URL.
@@ -123,28 +149,6 @@ class NavitasClient {
      * @param {string} apiToken   - Partner-specific Navitas API token
      *                              (X-Navitas-Token from the partner org).
      */
-
-    /**
-     * Makes an authenticated GET request to the attachment base URL
-     * (NAVITAS_ATTACH_BASE_URL — e.g. https://partnerportal.navitascredit.com).
-     */
-    async getAttach(path) {
-        const url           = `${this.attachBaseUrl}${path}`;
-        const authorization = this.generateHmac(path);
-
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'Authorization': authorization,
-                'Api-Token':     this.apiToken,
-                'Accept':        'application/json',
-                'User-Agent':    'NavitasDirectMiddleware/1.0'
-            }
-        });
-
-        return this._handleResponse(response, url);
-    }
-    
     async postAttachment(path, body, apiToken) {
         const url     = `${this.attachBaseUrl}${path}`;
         const bodyStr = JSON.stringify(body);
