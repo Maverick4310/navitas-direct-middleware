@@ -26,8 +26,15 @@ if (!navitas.isAttachConfigured()) {
             });
         }
 
-        // ─── Call Navitas ──────────────────────────────────────────────
+     
+// ─── Call Navitas ──────────────────────────────────────────────
+        const fullUrl = `${navitas.attachBaseUrl}/v1/asset_vendors`;
+        console.log('═══ NAVITAS VENDOR REQUEST ═══');
+        console.log('URL        :', fullUrl);
+        console.log('HMAC client:', navitas.clientId);
+        console.log('══════════════════════════════');
         const result = await navitas.getAttach('/v1/asset_vendors');
+        console.log(`Vendor response: HTTP ${result.status} | count: ${Array.isArray(result.data) ? result.data.length : 'n/a'}`);
         const vendors = Array.isArray(result.data) ? result.data : [];
 
         res.json(vendors);
