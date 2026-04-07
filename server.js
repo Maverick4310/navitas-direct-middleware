@@ -18,7 +18,8 @@ const localitiesRouter = require('./routes/localities');
 const submitRouter = require('./routes/submit');
 const documentRouter = require('./routes/document');
 const prefillRouter = require('./routes/prefill');
-const vendorsRouter = require('./routes/vendors');
+const vendorsRouter   = require('./routes/vendors');
+const assetTypesRouter = require('./routes/assetTypes');
 const healthRouter = require('./routes/health');
 
 const app = express();
@@ -36,6 +37,7 @@ app.use('/health', healthRouter);
 // ─── Protected Routes (require partner API key) ───
 app.use('/api/localities', authMiddleware, localitiesRouter);
 app.use('/api/vendors', authMiddleware, vendorsRouter);
+app.use('/api/asset-types', authMiddleware, assetTypesRouter);
 app.use('/api/submit', authMiddleware, submitRouter);
 app.use('/api/document', documentRouter);
 app.use('/api/prefill', prefillRouter);
