@@ -36,8 +36,8 @@ app.use('/health', healthRouter);
 
 // ─── Protected Routes (require partner API key) ───
 app.use('/api/localities', authMiddleware, localitiesRouter);
-app.use('/api/vendors', authMiddleware, vendorsRouter);
-app.use('/api/asset-types', authMiddleware, assetTypesRouter);
+app.use('/api/vendors', vendorsRouter);
+app.use('/api/asset-types', assetTypesRouter);
 app.use('/api/submit', authMiddleware, submitRouter);
 app.use('/api/document', documentRouter);
 app.use('/api/prefill', prefillRouter);
