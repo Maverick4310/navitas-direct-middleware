@@ -123,6 +123,28 @@ class NavitasClient {
      * @param {string} apiToken   - Partner-specific Navitas API token
      *                              (X-Navitas-Token from the partner org).
      */
+
+    /**
+     * Makes an authenticated GET request to the attachment base URL
+     * (NAVITAS_ATTACH_BASE_URL — e.g. https://partnerportal.navitascredit.com).
+     */
+    async getAttach(path) {
+        const url           = `${this.attachBaseUrl}${path}`;
+        const authorization = this.generateHmac(path);
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': authorization,
+                'Api-Token':     this.apiToken,
+                'Accept':        'application/json',
+                'User-Agent':    'NavitasDirectMiddleware/1.0'
+            }
+        });
+
+        return this._handleResponse(response, url);
+    }
+    
     async postAttachment(path, body, apiToken) {
         const url     = `${this.attachBaseUrl}${path}`;
         const bodyStr = JSON.stringify(body);
