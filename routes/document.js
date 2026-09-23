@@ -11,7 +11,13 @@
  *      cannot make outbound callouts to Leaseworks.)
  *
  * POST /api/document/upload              — attach a document to a deal
- *      Calls the Navitas Connect attachment API directly:
+ *      Direct channel (body.channel === 'Direct'): forwards to the Navitas
+ *      SF home org, which attaches the file to the Credit_Application__c:
+ *      POST {SF_CREDITAPP_DOC_URL}  (NavitasCreditAppDocumentResource)
+ *      Body: { creditApplicationName, accountId, fileName, bytes }
+ *      Auth: x-api-key = X-Navitas-Token (same key as Direct /api/submit).
+ *
+ *      Indirect (default): calls the Navitas Connect attachment API directly:
  *      POST {NAVITAS_ATTACH_BASE_URL}/v1/application/attachment?app_id={lwAppId}
  *      Body: { file_name, data }
  *      Auth: HMAC Authorization + Api-Token (per-partner, from X-Navitas-Token).
@@ -25,6 +31,8 @@
  *                             e.g. https://partner.navitascredit.com
  *   NAVITAS_HMAC_CLIENT_ID  — HMAC signing client ID
  *   NAVITAS_HMAC_SECRET     — HMAC signing secret
+ *   SF_CREDITAPP_DOC_URL    — Direct uploads, e.g.
+ *     https://navitascredit.my.salesforce-sites.com/creditapp/services/apexrest/navitas/creditapp/documents
  *
  * GET response mirrors NavitasDocumentResource exactly:
  *   200  { success: true,  fileName, mimeType, bytes }
@@ -125,6 +133,43 @@ router.get('/', async (req, res) => {
     }
 });
 
+/**
+ * Direct channel upload → SF home org. lwAppId carries the credit application
+ * Name returned by /newcreditapp (e.g. "NCC - 7859"); accountId is the
+ * partner's vendor ID, which the home org checks against the app's Partner.
+ */
+async function uploadDirect({ lwAppId, accountId, fileName, bytes }, apiKey) {
+    const url = (process.env.SF_CREDITAPP_DOC_URL || '').trim();
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'x-api-key':    apiKey,
+            'Content-Type': 'application/json',
+            'Accept':       'application/json',
+            'User-Agent':   'NavitasDirectMiddleware/1.0'
+        },
+        body: JSON.stringify({
+            creditApplicationName: lwAppId.trim(),
+            accountId:             String(accountId || '').trim(),
+            fileName:              fileName.trim(),
+            bytes:                 bytes.trim()
+        })
+    });
+
+    const text = await response.text();
+    let data;
+    try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { error: text.substring(0, 300) }; }
+
+    if (!response.ok || data.success === false) {
+        const error = new Error(`Navitas home org upload error: HTTP ${response.status}`);
+        error.status = response.status >= 400 ? response.status : 502;
+        error.data = { error: data.error || 'Upload failed' };
+        throw error;
+    }
+    return { status: response.status, data };
+}
+
 // ─────────────────────────────────────────────────────────────────────
 //  POST /api/document/upload
 //  Accept a file from the partner org and POST it directly to the
@@ -142,8 +187,9 @@ router.post('/upload', async (req, res) => {
     try {
 
         // ─── Validate body ────────────────────────────────────────────
-        const { lwAppId, fileName, bytes } = req.body || {};
+        const { lwAppId, fileName, bytes, channel, accountId } = req.body || {};
         const navitasToken = req.headers['x-navitas-token'];
+        const isDirect     = channel === 'Direct';
 
         if (!lwAppId || !lwAppId.trim()) {
             return res.status(400).json({
@@ -171,6 +217,33 @@ router.post('/upload', async (req, res) => {
                 success: false,
                 error: 'X-Navitas-Token header is required.'
             });
+        }
+
+        // ─── Direct → SF home org credit application ─────────────────
+        if (isDirect) {
+            if (!process.env.SF_CREDITAPP_DOC_URL) {
+                console.error('SF_CREDITAPP_DOC_URL is not configured');
+                return res.status(503).json({
+                    success: false,
+                    error: 'Direct document upload is not configured on the server.'
+                });
+            }
+            if (!accountId || !String(accountId).trim()) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'accountId is required for Direct uploads.'
+                });
+            }
+
+            console.log('═══ DIRECT DOCUMENT UPLOAD ═══');
+            console.log('Credit App:', lwAppId);
+            console.log('File      :', fileName);
+            console.log('Bytes len :', bytes.length);
+            console.log('══════════════════════════════');
+
+            const result = await uploadDirect({ lwAppId, accountId, fileName, bytes }, navitasToken);
+            console.log(`Home org upload response: HTTP ${result.status}`);
+            return res.json({ success: true, contentDocumentId: result.data.contentDocumentId || null });
         }
 
         // ─── Check client config ──────────────────────────────────────
