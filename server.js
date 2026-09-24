@@ -21,6 +21,7 @@ const prefillRouter = require('./routes/prefill');
 const vendorsRouter   = require('./routes/vendors');
 const assetTypesRouter = require('./routes/assetTypes');
 const healthRouter = require('./routes/health');
+const ocrRouter = require('./routes/ocr');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,6 +42,7 @@ app.use('/api/asset-types', assetTypesRouter);
 app.use('/api/submit', authMiddleware, submitRouter);
 app.use('/api/document', documentRouter);
 app.use('/api/prefill', prefillRouter);
+app.use('/api/ocr', authMiddleware, ocrRouter);
 
 // ─── 404 Handler ───
 app.use((req, res) => {
